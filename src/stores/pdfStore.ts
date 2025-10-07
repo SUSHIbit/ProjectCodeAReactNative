@@ -50,14 +50,14 @@ export const usePdfStore = create<PDFStore>((set, get) => ({
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
 
-      // Fetch the file content
+      // Read the file as array buffer for React Native
       const response = await fetch(file.uri);
-      const blob = await response.blob();
+      const arrayBuffer = await response.arrayBuffer();
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('pdfs')
-        .upload(fileName, blob, {
+        .upload(fileName, arrayBuffer, {
           contentType: 'application/pdf',
           upsert: false,
         });
