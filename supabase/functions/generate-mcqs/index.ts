@@ -34,8 +34,13 @@ serve(async (req) => {
   }
 
   try {
+    console.log("Edge Function invoked");
+    console.log("Request method:", req.method);
+
     // Parse request body
     const { pdfPath, pdfId } = await req.json();
+    console.log("Received pdfPath:", pdfPath);
+    console.log("Received pdfId:", pdfId);
 
     if (!pdfPath || !pdfId) {
       return new Response(
@@ -44,23 +49,43 @@ serve(async (req) => {
       );
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    // Initialize Supabase client with automatic environment variables
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    console.log("Environment check:");
+    console.log("SUPABASE_URL exists:", !!supabaseUrl);
+    console.log("SUPABASE_SERVICE_ROLE_KEY exists:", !!supabaseServiceKey);
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("Missing environment variables");
+      return new Response(
+        JSON.stringify({ error: "Server configuration error. Please contact support." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Download PDF from Supabase Storage
+    console.log("Attempting to download PDF from path:", pdfPath);
     const { data: pdfData, error: downloadError } = await supabase.storage
       .from("pdfs")
       .download(pdfPath);
 
     if (downloadError || !pdfData) {
       console.error("Download error:", downloadError);
+      console.error("Error details:", JSON.stringify(downloadError));
       return new Response(
-        JSON.stringify({ error: "Failed to download PDF from storage" }),
+        JSON.stringify({
+          error: `Failed to download PDF from storage: ${downloadError?.message || 'Unknown error'}`,
+          details: downloadError
+        }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log("PDF downloaded successfully, size:", pdfData.size);
 
     // Convert blob to buffer
     const arrayBuffer = await pdfData.arrayBuffer();
@@ -91,7 +116,17 @@ serve(async (req) => {
     }
 
     // Initialize OpenAI
-    const openaiApiKey = Deno.env.get("OPENAI_API_KEY")!;
+    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+    console.log("OpenAI API key exists:", !!openaiApiKey);
+
+    if (!openaiApiKey) {
+      console.error("Missing OpenAI API key");
+      return new Response(
+        JSON.stringify({ error: "OpenAI API key not configured. Please contact support." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
     // Generate MCQs using OpenAI
@@ -118,6 +153,7 @@ ${extractedText.substring(0, 12000)}`; // Limit text to avoid token limits
 
     let mcqsData: MCQData[];
     try {
+      console.log("Calling OpenAI API...");
       const completion = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
         messages: [
@@ -134,13 +170,39 @@ ${extractedText.substring(0, 12000)}`; // Limit text to avoid token limits
         max_tokens: 2000,
       });
 
+      console.log("OpenAI API call successful");
+      console.log("Completion:", JSON.stringify(completion, null, 2));
+
       const responseText = completion.choices[0]?.message?.content;
+      console.log("Response text:", responseText);
+
       if (!responseText) {
         throw new Error("Empty response from OpenAI");
       }
 
+      // Clean up response text (remove markdown code blocks if present)
+      let cleanedResponse = responseText.trim();
+
+      // Remove markdown code blocks (```json ... ``` or ``` ... ```)
+      cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+
+      // Remove any leading/trailing whitespace again after cleanup
+      cleanedResponse = cleanedResponse.trim();
+
+      console.log("Cleaned response (first 500 chars):", cleanedResponse.substring(0, 500));
+
+      // Try to extract JSON array if it's embedded in text
+      if (!cleanedResponse.startsWith('[')) {
+        const jsonMatch = cleanedResponse.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          cleanedResponse = jsonMatch[0];
+          console.log("Extracted JSON array from response");
+        }
+      }
+
       // Parse OpenAI response
-      mcqsData = JSON.parse(responseText);
+      mcqsData = JSON.parse(cleanedResponse);
+      console.log("Parsed MCQ data, count:", mcqsData.length);
 
       // Validate response structure
       if (!Array.isArray(mcqsData) || mcqsData.length !== 10) {
@@ -162,11 +224,34 @@ ${extractedText.substring(0, 12000)}`; // Limit text to avoid token limits
           throw new Error("Invalid question format");
         }
       }
-    } catch (openaiError) {
+    } catch (openaiError: any) {
       console.error("OpenAI error:", openaiError);
+      console.error("OpenAI error message:", openaiError?.message);
+      console.error("OpenAI error stack:", openaiError?.stack);
+
+      // Try to extract more specific error information
+      let errorMessage = "Failed to generate questions. Please try again later.";
+
+      if (openaiError?.message) {
+        // Check for specific OpenAI errors
+        if (openaiError.message.includes("API key")) {
+          errorMessage = "OpenAI API key error. Please contact support.";
+        } else if (openaiError.message.includes("rate limit") || openaiError.message.includes("quota")) {
+          errorMessage = "OpenAI API rate limit exceeded. Please try again later.";
+        } else if (openaiError.message.includes("network") || openaiError.message.includes("timeout")) {
+          errorMessage = "Network error connecting to OpenAI. Please try again.";
+        } else if (openaiError.message.includes("Invalid response format") || openaiError.message.includes("Invalid question format")) {
+          errorMessage = "Failed to parse AI response. Please try again with a different PDF.";
+        } else {
+          // Include the actual error message for debugging
+          errorMessage = `AI generation error: ${openaiError.message}`;
+        }
+      }
+
       return new Response(
         JSON.stringify({
-          error: "Failed to generate questions. Please try again later."
+          error: errorMessage,
+          details: openaiError?.message || "Unknown error"
         }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

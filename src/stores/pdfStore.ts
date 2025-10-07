@@ -111,20 +111,67 @@ export const usePdfStore = create<PDFStore>((set, get) => ({
       }
 
       // Call the Supabase Edge Function to generate MCQs
-      const { data, error } = await supabase.functions.invoke('generate-mcqs', {
-        body: {
-          pdfPath: currentPdf.file_path,
-          pdfId: pdfId,
-        },
-      });
+      let response;
+      try {
+        response = await supabase.functions.invoke('generate-mcqs', {
+          body: {
+            pdfPath: currentPdf.file_path,
+            pdfId: pdfId,
+          },
+        });
+      } catch (invokeError: any) {
+        console.error('Invoke threw exception:', invokeError);
+        throw new Error('Failed to connect to server. Please try again.');
+      }
 
+      const { data, error } = response;
+
+      // Debug logging
+      console.log('Edge Function Response:', { data, error });
+      console.log('Error object:', error);
+      console.log('Error stringified:', JSON.stringify(error, null, 2));
+
+      // Handle FunctionsHttpError (non-2xx status codes)
       if (error) {
-        throw error;
+        const errorObj = error as any;
+        let errorMessage = 'Failed to generate questions. Please try again later.';
+
+        // The context property is a Response object
+        if (errorObj.context && typeof errorObj.context === 'object') {
+          try {
+            // Clone the response to be able to read it
+            const responseClone = errorObj.context.clone ? errorObj.context.clone() : errorObj.context;
+
+            // Try to read the response body as JSON
+            const responseBody = await responseClone.json();
+            console.log('Response body:', responseBody);
+
+            if (responseBody && responseBody.error) {
+              errorMessage = responseBody.error;
+            }
+          } catch (jsonError) {
+            console.error('Failed to parse response body:', jsonError);
+          }
+        } else if (errorObj.message) {
+          errorMessage = errorObj.message;
+        }
+
+        console.error('Final error message:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      // Check if there's an error in the data
+      if (data && data.error) {
+        console.error('Edge Function returned error in data:', data.error);
+        throw new Error(data.error);
       }
 
       if (!data || !data.success) {
+        console.error('Invalid response:', data);
         throw new Error(data?.error || 'Failed to generate questions. Please try again later.');
       }
+
+      console.log('MCQs generated successfully');
 
       // Update the current PDF's processed status
       const { data: updatedPdf, error: updateError } = await supabase
