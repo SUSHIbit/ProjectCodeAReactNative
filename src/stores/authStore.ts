@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../services/supabase';
+import { getUserFriendlyError } from '../utils/errorHandler';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthStore {
@@ -41,7 +42,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
       });
     } catch (error: any) {
       set({
-        error: error.message || 'Failed to sign in. Please check your credentials.',
+        error: getUserFriendlyError(error, 'sign in'),
         loading: false,
       });
     }
@@ -65,7 +66,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
       });
     } catch (error: any) {
       set({
-        error: error.message || 'Failed to sign up. Please try again.',
+        error: getUserFriendlyError(error, 'sign up'),
         loading: false,
       });
     }
@@ -86,7 +87,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
       });
     } catch (error: any) {
       set({
-        error: error.message || 'Failed to sign out. Please try again.',
+        error: getUserFriendlyError(error, 'sign out'),
         loading: false,
       });
     }
@@ -120,7 +121,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
 }));
 
 // Set up auth state listener
-supabase.auth.onAuthStateChange((event, session) => {
+supabase.auth.onAuthStateChange((_event, session) => {
   useAuthStore.setState({
     user: session?.user || null,
     session: session,

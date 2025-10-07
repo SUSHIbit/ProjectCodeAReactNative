@@ -1,11 +1,17 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
 import { useAuthStore } from '../stores/authStore';
 import { usePdfStore } from '../stores/pdfStore';
 import { Button } from '../components/Button';
 
+type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
+
 export const HomeScreen: React.FC = () => {
+  const navigation = useNavigation<HomeScreenNavigationProp>();
   const { user, signOut, loading: authLoading } = useAuthStore();
   const {
     currentPdf,
@@ -69,8 +75,11 @@ export const HomeScreen: React.FC = () => {
   };
 
   const handleTakeQuiz = () => {
-    // Navigate to quiz screen (will be implemented in Phase 7)
-    Alert.alert('Coming Soon', 'Quiz feature will be implemented in Phase 7');
+    if (!currentPdf) {
+      Alert.alert('Error', 'No PDF found');
+      return;
+    }
+    navigation.navigate('Quiz', { pdfId: currentPdf.id });
   };
 
   const handleLogout = () => {

@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../services/supabase';
+import { getUserFriendlyError } from '../utils/errorHandler';
+import { validateFileName } from '../utils/validation';
 import * as DocumentPicker from 'expo-document-picker';
 import type { PDF } from '../types';
 
@@ -30,6 +32,12 @@ export const usePdfStore = create<PDFStore>((set, get) => ({
     try {
       set({ uploadLoading: true, uploadError: null, uploadProgress: 0 });
 
+      // Validate file name
+      const fileNameValidation = validateFileName(file.name);
+      if (!fileNameValidation.valid) {
+        throw new Error(fileNameValidation.message);
+      }
+
       // Validate file type
       if (file.mimeType !== 'application/pdf') {
         throw new Error('Please select a valid PDF file.');
@@ -38,6 +46,11 @@ export const usePdfStore = create<PDFStore>((set, get) => ({
       // Validate file size
       if (file.size && file.size > MAX_FILE_SIZE) {
         throw new Error('File size exceeds 10MB limit. Please choose a smaller PDF.');
+      }
+
+      // Check for zero-size files
+      if (file.size === 0) {
+        throw new Error('The selected file is empty. Please choose a valid PDF file.');
       }
 
       // Get current user
@@ -94,7 +107,7 @@ export const usePdfStore = create<PDFStore>((set, get) => ({
       });
     } catch (error: any) {
       set({
-        uploadError: error.message || 'An unexpected error occurred during upload.',
+        uploadError: getUserFriendlyError(error, 'pdf_upload'),
         uploadLoading: false,
         uploadProgress: 0,
       });
@@ -190,21 +203,8 @@ export const usePdfStore = create<PDFStore>((set, get) => ({
         generateLoading: false,
       });
     } catch (error: any) {
-      let errorMessage = 'An unexpected error occurred while generating questions.';
-
-      // User-friendly error messages
-      if (error.message?.includes('No text found')) {
-        errorMessage = 'No text found in PDF. Please upload a PDF with readable text content.';
-      } else if (error.message?.includes('Unable to read PDF')) {
-        errorMessage = 'Unable to read PDF file. Please ensure it\'s a valid, readable PDF document.';
-      } else if (error.message?.includes('network') || error.message?.includes('Network')) {
-        errorMessage = 'Connection failed. Please check your internet connection.';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-
       set({
-        generateError: errorMessage,
+        generateError: getUserFriendlyError(error, 'pdf_generation'),
         generateLoading: false,
       });
     }
