@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import {
@@ -8,6 +8,9 @@ import {
   ResultScreen,
   AttemptsHistoryScreen,
 } from '../screens';
+import { useAuthStore } from '../stores/authStore';
+import { LoadingSpinner } from '../components/LoadingSpinner';
+import { View, StyleSheet } from 'react-native';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -20,8 +23,23 @@ export type RootStackParamList = {
 const Stack = createStackNavigator<RootStackParamList>();
 
 export const AppNavigator: React.FC = () => {
-  // TODO: In Phase 2, check authentication state and conditionally render Auth/Main screens
-  const isAuthenticated = false; // This will be replaced with actual auth state
+  const { user, loading, checkSession } = useAuthStore();
+
+  useEffect(() => {
+    // Check for existing session on app launch
+    checkSession();
+  }, [checkSession]);
+
+  // Show loading spinner while checking session
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <LoadingSpinner size="large" />
+      </View>
+    );
+  }
+
+  const isAuthenticated = !!user;
 
   return (
     <NavigationContainer>
@@ -78,3 +96,12 @@ export const AppNavigator: React.FC = () => {
     </NavigationContainer>
   );
 };
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+  },
+});
