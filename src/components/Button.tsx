@@ -6,7 +6,7 @@ interface ButtonProps {
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
-  variant?: 'primary' | 'secondary' | 'danger';
+  variant?: 'primary' | 'secondary' | 'danger' | 'success';
   style?: ViewStyle;
 }
 
@@ -30,6 +30,8 @@ export const Button: React.FC<ButtonProps> = ({
         return { ...baseStyle, ...styles.buttonSecondary };
       case 'danger':
         return { ...baseStyle, ...styles.buttonDanger };
+      case 'success':
+        return { ...baseStyle, ...styles.buttonSuccess };
       default:
         return baseStyle;
     }
@@ -79,6 +81,9 @@ const styles = StyleSheet.create({
   },
   buttonDanger: {
     backgroundColor: '#FF3B30',
+  },
+  buttonSuccess: {
+    backgroundColor: '#34C759',
   },
   buttonText: {
     color: '#FFFFFF',
