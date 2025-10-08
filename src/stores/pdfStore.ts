@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../services/supabase';
-import { getUserFriendlyError } from '../utils/errorHandler';
+import { getUserFriendlyError, shouldRetry, getRetryDelay, isNetworkError } from '../utils/errorHandler';
 import { validateFileName } from '../utils/validation';
 import * as DocumentPicker from 'expo-document-picker';
 import type { PDF } from '../types';
@@ -29,8 +29,12 @@ export const usePdfStore = create<PDFStore>((set, get) => ({
   generateError: null,
 
   uploadPdf: async (file: DocumentPicker.DocumentPickerAsset) => {
-    try {
-      set({ uploadLoading: true, uploadError: null, uploadProgress: 0 });
+    let attemptCount = 0;
+    const maxAttempts = 3;
+
+    const attemptUpload = async (): Promise<void> => {
+      try {
+        set({ uploadLoading: true, uploadError: null, uploadProgress: 0 });
 
       // Validate file name
       const fileNameValidation = validateFileName(file.name);
@@ -38,8 +42,14 @@ export const usePdfStore = create<PDFStore>((set, get) => ({
         throw new Error(fileNameValidation.message);
       }
 
-      // Validate file type
-      if (file.mimeType !== 'application/pdf') {
+      // Validate file type - check both MIME type and file extension
+      // Different platforms return different MIME types for PDFs
+      const isPdfMimeType = file.mimeType === 'application/pdf' ||
+                            file.mimeType === 'application/x-pdf' ||
+                            file.mimeType?.includes('pdf');
+      const isPdfExtension = file.name.toLowerCase().endsWith('.pdf');
+
+      if (!isPdfMimeType && !isPdfExtension) {
         throw new Error('Please select a valid PDF file.');
       }
 
@@ -100,17 +110,37 @@ export const usePdfStore = create<PDFStore>((set, get) => ({
         throw new Error('Failed to save PDF information. Please try again.');
       }
 
-      set({
-        currentPdf: pdfData,
-        uploadProgress: 100,
-        uploadLoading: false,
-      });
-    } catch (error: any) {
-      set({
-        uploadError: getUserFriendlyError(error, 'pdf_upload'),
-        uploadLoading: false,
-        uploadProgress: 0,
-      });
+        set({
+          currentPdf: pdfData,
+          uploadProgress: 100,
+          uploadLoading: false,
+        });
+      } catch (error: any) {
+        // Check if we should retry
+        if (shouldRetry(error, attemptCount) && attemptCount < maxAttempts - 1) {
+          attemptCount++;
+          const delay = getRetryDelay(attemptCount);
+          console.log(`Upload failed, retrying in ${delay}ms (attempt ${attemptCount + 1}/${maxAttempts})`);
+
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return attemptUpload();
+        }
+
+        // Max retries reached or non-retryable error
+        set({
+          uploadError: getUserFriendlyError(error, 'pdf_upload'),
+          uploadLoading: false,
+          uploadProgress: 0,
+        });
+        throw error;
+      }
+    };
+
+    try {
+      await attemptUpload();
+    } catch (error) {
+      // Error already handled in attemptUpload
     }
   },
 

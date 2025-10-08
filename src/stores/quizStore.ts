@@ -80,6 +80,13 @@ export const useQuizStore = create<QuizStore>((set, get) => ({
 
   submitQuiz: async (pdfId: string) => {
     try {
+      // Prevent double submission
+      const { loading } = get();
+      if (loading) {
+        console.log('Quiz submission already in progress');
+        return;
+      }
+
       set({ loading: true, error: null });
 
       const { mcqs, userAnswers } = get();

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
 
 interface MCQOptionProps {
@@ -9,7 +9,7 @@ interface MCQOptionProps {
   disabled?: boolean;
 }
 
-export const MCQOption: React.FC<MCQOptionProps> = ({
+export const MCQOption: React.FC<MCQOptionProps> = memo(({
   option,
   text,
   selected,
@@ -29,7 +29,7 @@ export const MCQOption: React.FC<MCQOptionProps> = ({
       <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{text}</Text>
     </TouchableOpacity>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

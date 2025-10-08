@@ -105,6 +105,19 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+
+      // Check for minimum content length (approximately 500 characters for quality MCQs)
+      const minContentLength = 500;
+      if (extractedText.trim().length < minContentLength) {
+        return new Response(
+          JSON.stringify({
+            error: "Insufficient content to generate 10 questions. Please upload a longer PDF with at least 1-2 pages of text."
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log(`Extracted text length: ${extractedText.length} characters`);
     } catch (pdfError) {
       console.error("PDF parsing error:", pdfError);
       return new Response(
